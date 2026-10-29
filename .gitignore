@@ -1,0 +1,33 @@
+# Python / 本地环境 / Python & local environments
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 第三方原始数据与派生数据集：许可不明，不随仓库分发
+# Third-party raw data and derived datasets: licence unclear, not distributed
+data/
+*.npz
+*.zip
+*.log
+
+# 训练中间产物：优化器状态，与 models/best.pt 重复
+# Intermediate training artefacts: optimizer state, duplicates models/best.pt
+training_run/
+kana_runs/
+
+# 导出格式可用 export 子命令重新生成，不入库
+# Export formats are regenerable via the export subcommand
+models/export/*.pt2
+models/export/*.torchscript
+
+# 本地分析脚本与工作日志
+# Local analysis scripts and working notes
+.workbuddy/

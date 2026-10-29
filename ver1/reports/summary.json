@@ -1,0 +1,29 @@
+{
+  "external_46": {
+    "correct": 883,
+    "total": 920,
+    "accuracy": 0.9597826086956521
+  },
+  "external_same_36_as_v1": {
+    "correct": 691,
+    "total": 720,
+    "accuracy": 0.9597222222222223
+  },
+  "test_by_source": {
+    "font_synthetic": {
+      "samples": 640,
+      "accuracy": 0.9515625238418579,
+      "macro_f1": 0.9534101030763182
+    },
+    "hiraganani_test": {
+      "samples": 400,
+      "accuracy": 0.9975000023841858,
+      "macro_f1": 0.9968944099378882
+    },
+    "system_font_synthetic": {
+      "samples": 184,
+      "accuracy": 0.9945651888847351,
+      "macro_f1": 0.9942028985507246
+    }
+  }
+}

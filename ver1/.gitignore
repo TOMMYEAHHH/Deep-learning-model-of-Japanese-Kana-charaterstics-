@@ -1,0 +1,26 @@
+# Python / local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local training data and weights; not included in the source release
+data/
+models/
+examples/
+runs/
+*.pt
+*.pt2
+*.torchscript
+*.npz
+*.log
+*.zip
+
+# Local example pictures are not part of the source-only upload
+reports/external_examples.png
+reports/external_errors.png
+reports/learning_curves.png

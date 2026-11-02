@@ -1,0 +1,263 @@
+{
+  "classes": [
+    "あ",
+    "い",
+    "う",
+    "え",
+    "お",
+    "か",
+    "き",
+    "く",
+    "け",
+    "こ",
+    "さ",
+    "し",
+    "す",
+    "せ",
+    "そ",
+    "た",
+    "ち",
+    "つ",
+    "て",
+    "と",
+    "な",
+    "に",
+    "ぬ",
+    "ね",
+    "の",
+    "は",
+    "ひ",
+    "ふ",
+    "へ",
+    "ほ",
+    "ま",
+    "み",
+    "む",
+    "め",
+    "も",
+    "や",
+    "ゆ",
+    "よ",
+    "ら",
+    "り",
+    "る",
+    "れ",
+    "ろ",
+    "わ",
+    "を",
+    "ん",
+    "ア",
+    "イ",
+    "ウ",
+    "エ",
+    "オ",
+    "カ",
+    "キ",
+    "ク",
+    "ケ",
+    "コ",
+    "サ",
+    "シ",
+    "ス",
+    "セ",
+    "ソ",
+    "タ",
+    "チ",
+    "ツ",
+    "テ",
+    "ト",
+    "ナ",
+    "ニ",
+    "ヌ",
+    "ネ",
+    "ノ",
+    "ハ",
+    "ヒ",
+    "フ",
+    "ヘ",
+    "ホ",
+    "マ",
+    "ミ",
+    "ム",
+    "メ",
+    "モ",
+    "ヤ",
+    "ユ",
+    "ヨ",
+    "ラ",
+    "リ",
+    "ル",
+    "レ",
+    "ロ",
+    "ワ",
+    "ヲ",
+    "ン"
+  ],
+  "preprocessing": {
+    "version": 1,
+    "size": 48,
+    "foreground": "white",
+    "background": "black",
+    "content_size": 40,
+    "polarity": "border_median",
+    "normalization": "uint8 / 255",
+    "crop_threshold": 0.12
+  },
+  "temperature": 0.6,
+  "best_epoch": 28,
+  "torch": "2.14.1+cu126",
+  "device": "cuda",
+  "data_fingerprint": "8811d1b2c8c9413eb059a906c96d123ef5bbb2e1f2a195bfb3c05d0807087152",
+  "scope": "92 basic kana only; one isolated character",
+  "sources": [
+    {
+      "source": "hiraganani",
+      "path": "kana_review/sources/hiraganani_train.zip",
+      "sha256": "be94071f20ce50060d00c55554220fdc97ebde72bc43e821596723c2e3fa66fa",
+      "split": "provided test; stratified validation; writer IDs unavailable"
+    },
+    {
+      "source": "hiraganani_test",
+      "path": "kana_review/sources/hiraganani_test.zip",
+      "sha256": "ba89687ad219e880512302510d7c8afe549504bbedc465e875733478c7819847",
+      "split": "provided test; stratified validation; writer IDs unavailable"
+    },
+    {
+      "source": "font_synthetic",
+      "url": "https://github.com/Orzelius/7500-unique-kana-images",
+      "font_groups": {
+        "Chihaya Jyun": "test",
+        "HonyaJi-Re": "test",
+        "S2G Luna font-PRO": "test",
+        "851MkPOP": "test",
+        "S2G Moon font-PRO": "test",
+        "KAWAIITEGAKIMOJI": "test",
+        "kouichi.sakurai font felt pen": "test",
+        "Yuzu Pop A [M] Regular": "test",
+        "SanafonYu": "val",
+        "MakibaFontP": "val",
+        "SanafonMugiV2.60": "val",
+        "SanafonKazariV2.70": "val",
+        "HanazomeFont": "val",
+        "hetare": "val",
+        "uzura_font": "val",
+        "Mitimasu": "val",
+        "K Gothic": "train",
+        "SistersFL": "train",
+        "Gyate-Luminescence": "train",
+        "Jiyucho": "train",
+        "SanaFon": "train",
+        "mitsufont2": "train",
+        "guzuri_font_1nensei": "train",
+        "Tanuki Permanent Marker": "train",
+        "Ghatee": "train",
+        "S2G Marine font": "train",
+        "IPAGothic": "train",
+        "Elmer_P Font": "train",
+        "S2G Nagurigaki font-PRO": "train",
+        "S2G Memo font": "train",
+        "S2G Uni font-PRO": "train",
+        "MitsuFont": "train",
+        "SistersFB": "train",
+        "SistersFS": "train",
+        "DartsFont": "train",
+        "SanafonMaru": "train",
+        "umeboshi": "train",
+        "Yuzu PenJiN [M]": "train",
+        "S2G Sea font-PRO": "train",
+        "HuiFontP": "train",
+        "Kyuchan_Font": "train",
+        "SanafonKaku": "train",
+        "Yuzu PenJiN [P]": "train",
+        "azukifontP": "train",
+        "Yuzu Pop A [M] Light": "train",
+        "Dining message": "train",
+        "ShigotoMemogaki": "train",
+        "S2G Sea font": "train",
+        "851CHIKARA-DZUYOKU-KANA-A": "train",
+        "kiloji": "train",
+        "Yuzu Pop A [M] Extra Light": "train",
+        "AiharaHudemojiKaisho": "train",
+        "Mikiyu Font NEW-PENJI- P ": "train",
+        "AsobiMemogaki": "train",
+        "RAKO_FONT": "train",
+        "S2G Love font": "train"
+      }
+    },
+    {
+      "source": "system_font_synthetic",
+      "fonts": [
+        {
+          "file": "meiryo.ttc",
+          "split": "train"
+        },
+        {
+          "file": "msgothic.ttc",
+          "split": "train"
+        },
+        {
+          "file": "YuGothR.ttc",
+          "split": "train"
+        },
+        {
+          "file": "YuGothM.ttc",
+          "split": "train"
+        },
+        {
+          "file": "YuGothB.ttc",
+          "split": "train"
+        },
+        {
+          "file": "msyh.ttc",
+          "split": "train"
+        },
+        {
+          "file": "simkai.ttf",
+          "split": "train"
+        },
+        {
+          "file": "msjh.ttc",
+          "split": "train"
+        },
+        {
+          "file": "simsun.ttc",
+          "split": "val"
+        },
+        {
+          "file": "msmincho.ttc",
+          "split": "test"
+        },
+        {
+          "file": "simhei.ttf",
+          "split": "test"
+        }
+      ],
+      "note": "Locally rendered, not handwriting. Installed fonts are not redistributed."
+    },
+    {
+      "source": "inoue_external",
+      "sha256": "de241da5277e17a3e918db90c7fb27ddbf5ca0d94baf1a3c5c571ad45ad6cb49",
+      "note": "Previous model was evaluated here; not a pristine benchmark for development decisions."
+    }
+  ],
+  "counts": {
+    "external": {
+      "inoue_external": 920
+    },
+    "test": {
+      "hiraganani_test": 400,
+      "font_synthetic": 640,
+      "system_font_synthetic": 184
+    },
+    "val": {
+      "hiraganani": 1709,
+      "font_synthetic": 640,
+      "system_font_synthetic": 92
+    },
+    "train": {
+      "hiraganani": 9673,
+      "font_synthetic": 3147,
+      "system_font_synthetic": 736
+    }
+  }
+}

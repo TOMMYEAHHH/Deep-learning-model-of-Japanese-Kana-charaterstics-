@@ -1,12 +1,12 @@
-# 假名识别器 v2 · Kana Recognizer v2
+# 假名识别器 v3 · Kana Recognizer v3
 
-**中文**：92 类日语基本假名单字识别模型（46 个平假名 + 46 个片假名），基于 PyTorch，附带完整的训练、评估与导出流程。输入必须是**单个已分割好的字符**。
+**中文**：92 类日语基本假名单字识别器，基于 PyTorch，输入必须是**单个已分割好的字符**。本目录保留 v2 基线，并新增针对噪声和弱对比度微调的 v3 权重与训练报告。
 
-**English**: A 92-class single-character Japanese kana recognizer (46 hiragana + 46 katakana) built with PyTorch, shipped with a complete training, evaluation and export pipeline. Input must be **one isolated character**.
+**English**: A 92-class single-character Japanese kana recognizer built with PyTorch. Input must be **one isolated character**. This directory keeps the v2 baseline and adds v3 noise and low-contrast fine-tuning, weights and reports.
 
-> **中文 · 范围声明**：本版本附带可直接推理的训练权重。真实手写平假名已通过跨来源外部基准验证；**片假名目前仅使用字体图训练，尚缺真实手写片假名的验收**。本项目不是通用日语 OCR，不覆盖浊音、半浊音、小假名、长音符与多字符文本。
+> **中文 · 范围声明**：v2 基线的真实手写平假名通过了跨来源外部基准验证；v3 已覆盖 92 类，但本轮只用字体渲染图训练与评估，尚未重新跑手写基准；新增的 12 类由本机日文字体生成。**片假名仍缺少真实手写验收**。本项目不是通用日语 OCR，不覆盖浊音、半浊音、小假名、长音符与多字符文本。
 >
-> **English · Scope**: This release ships ready-to-use trained weights. Handwritten hiragana is validated against a cross-source external benchmark; **katakana is trained on font renders only and still lacks real-handwriting validation**. This is not general-purpose Japanese OCR — voiced marks, small kana, long-vowel marks and multi-character text are out of scope.
+> **English · Scope**: The v2 baseline passed a cross-source handwritten hiragana benchmark. V3 covers all 92 classes but was trained and evaluated only on font renders; its handwritten performance has not been rechecked. The 12 newly added classes use local system-font renders. **Katakana still lacks real-handwriting validation**. This is not general-purpose Japanese OCR — voiced marks, small kana, long-vowel marks and multi-character text are out of scope.
 
 ---
 
@@ -24,6 +24,7 @@
 | [8. 复现实验](#8-复现实验--reproducibility) | Reproducibility |
 | [9. 常见问题](#9-常见问题--faq) | FAQ |
 | [10. 致谢与来源](#10-致谢与来源--credits) | Credits |
+| [11. v3 抗干扰微调](#11-v3-抗干扰微调--noise-robust-fine-tuning) | v3 noise-robust fine-tuning |
 
 ---
 
@@ -272,8 +273,16 @@ python -m kana_recognizer export \
 │   ├── __main__.py           # 支持 python -m kana_recognizer
 │   ├── core.py               # 预处理、模型、训练、评估、导出
 │   └── models/
-│       ├── best.pt           # 训练权重（约 6 MB）/ trained weights
-│       └── metadata.json     # 词表、预处理版本、温度、数据来源
+│       ├── best.pt           # v2 基线权重 / v2 baseline weights
+│       ├── metadata.json
+│       ├── v3_best.pt        # v3 完整 92 类权重 / complete 92-class model
+│       ├── v3_metadata.json
+│       ├── v3_partial_80class.pt      # 上一轮 80 类微调备份
+│       └── v3_partial_80class_metadata.json
+├── v3/
+│   ├── render_missing.py     # 补齐缺失 12 类的本机字体样本
+│   ├── make_report.py        # 上一轮报告生成器
+│   └── make_full_report.py  # 完整 92 类报告生成器
 ├── kana_demo/                # 可在 IDE 中直接运行的演示脚本
 │   ├── train_demo.py
 │   └── predict_demo.py
@@ -288,7 +297,9 @@ python -m kana_recognizer export \
     ├── learning_curves.png
     ├── external_examples.png
     ├── external_errors.png
-    └── example.png
+    ├── example.png
+    ├── v3/                   # 上一轮 80 类报告
+    └── v3_complete/          # 完整 92 类表格、曲线与逐类指标
 ```
 
 **中文**：仓库不含 `data/`（第三方数据，许可不明）与 `training_run/`（优化器状态，与 `best.pt` 重复）。两者都可由 `prepare` 与 `train` 重新生成。
@@ -365,10 +376,10 @@ python -m kana_recognizer export \
 **A（En）**: No. Voiced marks, semi-voiced marks, small kana and long-vowel marks are outside the 92 classes; the model will silently force them into some basic kana.
 
 **Q（中）**：可以在 Apple 芯片上跑吗？
-**A（中）**：代码有 MPS 自动选择逻辑，但没有在 Apple 实机上验证过。CUDA 与 CPU 是实测过的。
+**A（中）**：训练使用自动设备选择（CUDA → MPS → CPU），本机 Apple M4 上实测选中 MPS。若当前 PyTorch 运行环境无法访问 Metal，程序会退回 CPU。
 
 **Q（En）**: Does it run on Apple silicon?
-**A（En）**: MPS auto-selection exists but is unverified on real Apple hardware. CUDA and CPU paths are tested.
+**A（En）**: Training auto-selects CUDA → MPS → CPU. MPS was used on the Apple M4 for v3; if the current PyTorch runtime cannot access Metal, it falls back to CPU.
 
 ---
 
@@ -388,6 +399,65 @@ python -m kana_recognizer export \
 
 ---
 
-**中文 · 版本**：v2.0.0 · 模型权重来自第 28 轮 · 温度 0.6 · 92 类
+**中文 · 权重版本**：`best.pt` 是 v2 基线（第 28 轮）；`v3_best.pt` 是完整 92 类抗干扰模型（最佳第 3 轮，训练于第 10 轮早停）。
 
-**English · Version**: v2.0.0 · weights from epoch 28 · temperature 0.6 · 92 classes
+**English · Model versions**: `best.pt` is the v2 baseline (epoch 28); `v3_best.pt` is the complete 92-class noise-robust model (best at epoch 3; early-stopped at epoch 10).
+
+## 11. v3 完整 92 类抗干扰训练 · Complete 92-class noise-robust training
+
+v3 保留原有 92 输出类别与推理预处理，并补入原始字体数据缺少的 12 类：「あいうえおん」「アイウエオン」。新增样本由 `v3/render_missing.py` 使用 7 种本机日文字体生成，共 1,008 张；4 个字体家族只分配到训练集，1 个只用于验证，2 个只用于测试。字体文件不随项目分发。该补充属于合成字体数据，不是手写数据。
+
+| 划分 | 样本数 | 类别覆盖 |
+|---|---:|---:|
+| 训练 | 3,776 | 92/92 |
+| 验证 | 784 | 92/92 |
+| 测试 | 928 | 92/92 |
+
+测试集包含 640 张原字体库图和 288 张新增系统字体图。归一化像素哈希没有跨训练、验证、测试划分重复。新增 12 类各有 24 张字体隔离测试样本。
+
+训练以 80 类抗干扰权重初始化，使用 v2 权重作教师蒸馏。优化器为 AdamW，最高学习率 `1e-4`、3 轮 warm-up 后余弦衰减、batch size 128、梯度裁剪 1.0、早停 patience 7。增强包含高斯噪声 σ=0.005–0.05、椒盐噪声 0.2%–2%、弱对比度因子 0.45–0.85，以及仿射与笔画粗细变化。模型按验证集干净图、高斯 σ=0.02、椒盐 1% 与弱对比度的 macro-recall 均值选择。
+
+硬件自动检测顺序为 CUDA → MPS → CPU。本轮运行于 Apple M4、PyTorch 2.15.0：CUDA 不可用，MPS 可用，实际选择 `mps`。训练第 10 轮早停，最佳权重来自第 3 轮；测试准确率 99.25%，macro-recall 99.05%。每个新增类别的测试召回率为 100%（各 24 张）。
+
+### 同一完整测试集上的准确率
+
+| 测试条件 | v2 基线 | v3 上一轮 80 类 | v3 完整 92 类 |
+|---|---:|---:|---:|
+| 清晰图像 | 99.35% | 97.52% | 99.25% |
+| 高斯噪声 σ=0.02 | 76.19% | 97.41% | 99.25% |
+| 高斯噪声 σ=0.05 | 30.82% | 97.20% | 99.25% |
+| 高斯噪声 σ=0.10 | 7.87% | 96.66% | 99.25% |
+| 椒盐噪声 1% | 53.77% | 96.98% | 99.14% |
+| 弱对比度因子 0.45 | 3.45% | 96.44% | 99.14% |
+
+测试来源分开看，原字体库 640 张准确率为 98.91%，新增系统字体 288 张准确率为 100%。这些数值证明的是字体图上的拟合与抗干扰效果，不代表真实手写泛化；v3 尚未重新评估手写集。每轮训练日志中的训练 loss 包含蒸馏 KL 项，验证 loss 仅为交叉熵，两者绝对值不可直接比较；曲线走势平稳。
+
+**复现训练**（从仓库根目录运行，`--device auto` 会自动选择当前可用的最佳设备）：
+
+```bash
+python v3/render_missing.py --output data/supplement_v3_complete --variants 12
+python -m kana_recognizer prepare-folders --input data \
+  --supplement data/supplement_v3_complete --output data/prepared_v3_complete --seed 20261122
+python -m kana_recognizer train --data data/prepared_v3_complete --output runs/v3_complete \
+  --epochs 24 --batch-size 128 --lr 0.0001 --warmup-epochs 3 --patience 7 \
+  --distill-weight 0.35 --init-model kana_recognizer/models/v3_partial_80class.pt \
+  --teacher-model kana_recognizer/models/best.pt --seed 20261122 --device auto
+python -m kana_recognizer evaluate-robust --model runs/v3_complete/best.pt \
+  --data data/prepared_v3_complete/test.npz \
+  --output reports/v3_complete/v3_complete_robust_metrics.json --device auto
+pip install matplotlib  # 仅生成图表时需要 / only needed for report figures
+python v3/make_full_report.py
+```
+
+推理仍使用原有接口：
+
+```bash
+python -m kana_recognizer predict --model kana_recognizer/models/v3_best.pt \
+  --image reports/example.png --top-k 3 --device auto
+```
+
+最终权重为 `kana_recognizer/models/v3_best.pt`；上一轮 80 类权重备份在 `kana_recognizer/models/v3_partial_80class.pt`。完整报告位于 `reports/v3_complete/`，包括逐轮训练表、92 类覆盖表、鲁棒性对照表、曲线图和新增类别示例图。
+
+![v3 complete training curves](reports/v3_complete/learning_curves.png)
+
+![v3 complete class augmentation examples](reports/v3_complete/complete_class_augmentation.png)

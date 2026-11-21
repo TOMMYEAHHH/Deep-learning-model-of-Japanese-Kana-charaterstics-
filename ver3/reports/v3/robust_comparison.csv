@@ -1,0 +1,7 @@
+﻿condition,samples,v2_accuracy_pct,v3_accuracy_pct,change_percentage_points
+Clean,640,98.75,98.59,-0.16
+Gaussian σ=0.02,640,71.56,98.59,+27.03
+Gaussian σ=0.05,640,31.41,98.91,+67.50
+Gaussian σ=0.10,640,4.53,98.91,+94.37
+Salt & pepper 1%,640,53.44,99.22,+45.78
+Low contrast 0.45,640,1.25,98.28,+97.03

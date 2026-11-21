@@ -1,0 +1,7 @@
+﻿condition,samples,v2_baseline_accuracy_pct,v3_partial_accuracy_pct,v3_complete_accuracy_pct,complete_vs_partial_pp,complete_vs_v2_pp
+Clean,928,99.35,97.52,99.25,1.73,-0.1
+Gaussian σ=0.02,928,76.19,97.41,99.25,1.84,23.06
+Gaussian σ=0.05,928,30.82,97.2,99.25,2.05,68.43
+Gaussian σ=0.10,928,7.87,96.66,99.25,2.59,91.38
+Salt & pepper 1%,928,53.77,96.98,99.14,2.16,45.37
+Low contrast 0.45,928,3.45,96.44,99.14,2.7,95.69

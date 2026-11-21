@@ -1,0 +1,48 @@
+{
+  "samples": 640,
+  "conditions": {
+    "clean": {
+      "accuracy": 0.987500011920929,
+      "macro_recall": 0.9875,
+      "macro_f1": 0.9859536541889483,
+      "top3_accuracy": 1.0,
+      "loss": 0.0359494686126709
+    },
+    "gaussian_020": {
+      "accuracy": 0.715624988079071,
+      "macro_recall": 0.715625,
+      "macro_f1": 0.666504047183921,
+      "top3_accuracy": 0.8515625,
+      "loss": 1.2750880718231201
+    },
+    "gaussian_050": {
+      "accuracy": 0.3140625059604645,
+      "macro_recall": 0.3140625,
+      "macro_f1": 0.26364941259854424,
+      "top3_accuracy": 0.46875,
+      "loss": 5.065478324890137
+    },
+    "gaussian_100": {
+      "accuracy": 0.04531250149011612,
+      "macro_recall": 0.0453125,
+      "macro_f1": 0.02914494414611694,
+      "top3_accuracy": 0.12343750149011612,
+      "loss": 15.432907104492188
+    },
+    "salt_pepper_010": {
+      "accuracy": 0.534375011920929,
+      "macro_recall": 0.534375,
+      "macro_f1": 0.48737353494171726,
+      "top3_accuracy": 0.6875,
+      "loss": 2.61669659614563
+    },
+    "low_contrast_045": {
+      "accuracy": 0.012500000186264515,
+      "macro_recall": 0.0125,
+      "macro_f1": 0.00042643923240938175,
+      "top3_accuracy": 0.05156249925494194,
+      "loss": 17.369234085083008
+    }
+  },
+  "source_note": "The supplied folder dataset contains font-rendered samples only; these results are not handwritten validation."
+}

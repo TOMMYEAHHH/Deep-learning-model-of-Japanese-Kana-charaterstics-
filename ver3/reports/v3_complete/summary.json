@@ -1,0 +1,90 @@
+{
+  "epochs": 10,
+  "best_epoch": 3,
+  "best_validation_robust_macro_recall": 0.9918478260869565,
+  "class_coverage": 92,
+  "samples": {
+    "train": 3776,
+    "val": 784,
+    "test": 928
+  },
+  "sources": [
+    {
+      "source": "font_synthetic",
+      "path": "data",
+      "note": "Font-rendered images only; not handwriting."
+    },
+    {
+      "source": "system_font_synthetic",
+      "path": "data/supplement_v3_complete",
+      "classes_added": {
+        "hiragana": [
+          "あ",
+          "い",
+          "う",
+          "え",
+          "お",
+          "ん"
+        ],
+        "katakana": [
+          "ア",
+          "イ",
+          "ウ",
+          "エ",
+          "オ",
+          "ン"
+        ]
+      },
+      "fonts": [
+        {
+          "family": "STHeiti",
+          "split": "train",
+          "path": "/System/Library/Fonts/STHeiti Medium.ttc"
+        },
+        {
+          "family": "HiraginoSansGB",
+          "split": "train",
+          "path": "/System/Library/Fonts/Hiragino Sans GB.ttc"
+        },
+        {
+          "family": "AppleGothic",
+          "split": "train",
+          "path": "/System/Library/Fonts/Supplemental/AppleGothic.ttf"
+        },
+        {
+          "family": "HiraginoKaku",
+          "split": "train",
+          "path": "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc"
+        },
+        {
+          "family": "HiraginoMincho",
+          "split": "val",
+          "path": "/System/Library/Fonts/ヒラギノ明朝 ProN.ttc"
+        },
+        {
+          "family": "HiraginoMaru",
+          "split": "test",
+          "path": "/System/Library/Fonts/ヒラギノ丸ゴ ProN W4.ttc"
+        },
+        {
+          "family": "AppleSDGothicNeo",
+          "split": "test",
+          "path": "/System/Library/Fonts/AppleSDGothicNeo.ttc"
+        }
+      ],
+      "variants_per_class_per_font": 12,
+      "samples_written": 1008,
+      "note": "Synthetic local system-font renders; not handwriting and font files are not redistributed."
+    }
+  ],
+  "hardware": {
+    "cuda_available": false,
+    "mps_built": true,
+    "mps_available": true,
+    "selection_order": [
+      "cuda",
+      "mps",
+      "cpu"
+    ]
+  }
+}

@@ -1,4 +1,4 @@
-"""92-class single-kana recognizer. CLI: prepare, train, evaluate, predict, export.
+"""92-class single-kana recognizer. CLI: prepare, prepare-folders, train, evaluate, evaluate-robust, predict, export.
 
 No training or device initialization occurs on import. Paths are explicit; model
 bundles include vocabulary and preprocessing version. See README for limitations.
@@ -67,12 +67,22 @@ class KanaCNN(nn.Module):
         self.classifier=nn.Sequential(nn.Flatten(),nn.Linear(128*6*6,256),nn.ReLU(),nn.Dropout(.35),nn.Linear(256,len(CLASSES)))
     def forward(self,x):return self.classifier(self.features(x))
 
+def hardware_status():
+    cuda=bool(torch.cuda.is_available())
+    mps_built=bool(hasattr(torch.backends,'mps') and torch.backends.mps.is_built())
+    try:mps_available=bool(mps_built and torch.backends.mps.is_available())
+    except Exception:mps_available=False
+    return {'cuda_available':cuda,'mps_built':mps_built,'mps_available':mps_available,
+        'selection_order':['cuda','mps','cpu']}
+
 def device_for(name='auto'):
+    status=hardware_status()
     if name=='auto':
-        name='cuda' if torch.cuda.is_available() else ('mps' if torch.backends.mps.is_available() else 'cpu')
+        name='cuda' if status['cuda_available'] else ('mps' if status['mps_available'] else 'cpu')
     device=torch.device(name)
-    if device.type=='cuda' and not torch.cuda.is_available():raise ValueError('CUDA unavailable')
-    if device.type=='mps' and not torch.backends.mps.is_available():raise ValueError('MPS unavailable')
+    if device.type=='cuda' and not status['cuda_available']:raise ValueError('CUDA unavailable')
+    if device.type=='mps' and not status['mps_available']:
+        raise ValueError('MPS unavailable on this PyTorch/macOS runtime')
     return device
 
 def prepare(args):
@@ -174,6 +184,79 @@ def prepare(args):
         'records':[{k:v for k,v in r.items() if k!='image'} for r in clean]})
     print(json.dumps({'counts':{s:sum(r['split']==s for r in clean) for s in rank},'dropped':dict(dropped)}))
 
+def prepare_folders(args):
+    """Prepare the flat font corpus plus an optional explicitly split kana supplement."""
+    out=Path(args.output);out.mkdir(parents=True,exist_ok=True)
+    if (out/'manifest.json').exists():raise ValueError('Prepared dataset exists; choose a new output directory')
+    root=Path(args.input);records=[];rng=np.random.default_rng(args.seed)
+    mapping=dict(zip(ROMAJI,range(46)));mapping.update({'si':11,'ti':16,'tu':17,'hu':27})
+    groups=set()
+    for script,offset in [('hiragana',0),('katakana',46)]:
+        base=root/script
+        if not base.exists():raise ValueError(f'Missing dataset directory: {base}')
+        for p in sorted(base.glob('*.jpeg')):
+            parts=p.stem.split('_')
+            if len(parts)<3 or parts[0] not in mapping or parts[-1]!='dakufalse':continue
+            group='_'.join(parts[1:-1]);groups.add(group)
+            records.append({'path':p,'label':mapping[parts[0]]+offset,'script':script,'group':group,
+                'source':'font_synthetic','id':str(p.relative_to(root))})
+    if not records:raise ValueError(f'No *dakufalse.jpeg images found under {root}/hiragana and katakana')
+    groups=sorted(groups);rng.shuffle(groups)
+    ntest=max(1,round(len(groups)*.15));nval=max(1,round(len(groups)*.15))
+    group_split={g:('test' if i<ntest else ('val' if i<ntest+nval else 'train')) for i,g in enumerate(groups)}
+    for r in records:r['split']=group_split[r['group']]
+    supplement_manifest=None
+    if args.supplement:
+        supplement=Path(args.supplement)
+        manifest_path=supplement/'manifest.json'
+        if not manifest_path.exists():raise ValueError(f'Missing supplement manifest: {manifest_path}')
+        supplement_manifest=json.loads(manifest_path.read_text(encoding='utf-8'))
+        for split in ('train','val','test'):
+            split_root=supplement/split
+            if not split_root.exists():raise ValueError(f'Missing supplement split: {split_root}')
+            for family in sorted(p for p in split_root.iterdir() if p.is_dir()):
+                for script_dir in sorted(p for p in family.iterdir() if p.is_dir()):
+                    script=script_dir.name
+                    if script not in ('hiragana','katakana'):continue
+                    for class_dir in sorted(p for p in script_dir.iterdir() if p.is_dir()):
+                        char=class_dir.name
+                        if char not in CLASSES:raise ValueError(f'Unknown kana folder in supplement: {class_dir}')
+                        for image_path in sorted(p for p in class_dir.iterdir() if p.suffix.lower() in {'.png','.jpg','.jpeg'}):
+                            records.append({'path':image_path,'label':CLASSES.index(char),'script':script,
+                                'group':'system:'+family.name,'source':'system_font_synthetic',
+                                'split':split,'id':str(image_path.relative_to(supplement))})
+    for r in records:
+        try:
+            with Image.open(r['path']) as im:r['image']=preprocess(im)
+        except Exception as exc:raise ValueError(f'Failed to process {r["path"]}: {exc}') from exc
+        r['sha256']=hashlib.sha256(r['image'].tobytes()).hexdigest()
+    hash_splits={}
+    for r in records:hash_splits.setdefault(r['sha256'],set()).add(r['split'])
+    overlap_hashes=sum(len(splits)>1 for splits in hash_splits.values())
+    for split in ('train','val','test'):
+        rows=[r for r in records if r['split']==split]
+        if not rows:raise ValueError(f'No samples found for split {split}')
+        labels={r['label'] for r in rows}
+        if split!='train' and labels!={r['label'] for r in records if r['split']=='train'}:
+            raise ValueError(f'{split} label coverage differs from train split')
+        if args.supplement and labels!=set(range(92)):
+            absent=[CLASSES[i] for i in sorted(set(range(92))-labels)]
+            raise ValueError(f'{split} is missing kana classes: {absent}')
+        np.savez_compressed(out/f'{split}.npz',images=np.stack([r['image'] for r in rows]),
+            labels=np.array([r['label'] for r in rows],dtype=np.int64),
+            sources=np.array([r['source'] for r in rows]),ids=np.array([r['id'] for r in rows]))
+    coverage=[CLASSES[i] for i in sorted({r['label'] for r in records})]
+    sources=[{'source':'font_synthetic','path':str(root),'note':'Font-rendered images only; not handwriting.'}]
+    if supplement_manifest:sources.append({'source':'system_font_synthetic','path':str(args.supplement),**supplement_manifest})
+    save_json(out/'manifest.json',{'version':VERSION,'classes':CLASSES,'preprocessing':PREPROCESS,'seed':args.seed,
+        'sources':sources,'counts':{s:sum(r['split']==s for r in records) for s in ('train','val','test')},
+        'per_class':{s:{CLASSES[i]:sum(r['split']==s and r['label']==i for r in records) for i in range(92)} for s in ('train','val','test')},
+        'class_coverage':coverage,'font_groups':len(groups),'validation_groups':nval,'test_groups':ntest,
+        'cross_split_identical_pixel_hashes':overlap_hashes,
+        'records':[{k:v for k,v in r.items() if k not in {'image','path'}} for r in records]})
+    print(json.dumps({'counts':{s:sum(r['split']==s for r in records) for s in ('train','val','test')},
+        'classes':len(coverage),'cross_split_identical_pixel_hashes':overlap_hashes}))
+
 def augment(x):
     n=x.shape[0];d=x.device
     angle=(torch.rand(n,device=d)*2-1)*.14
@@ -188,7 +271,38 @@ def augment(x):
     choice=torch.rand((),device=d).item()
     if choice<.12:x=F.max_pool2d(x,3,1,1)
     elif choice<.24:x=-F.max_pool2d(-x,3,1,1)
-    return (x*(.8+.4*torch.rand(n,1,1,1,device=d))).clamp(0,1)
+    # Mixed image-quality augmentation: Gaussian noise, impulse noise, and weak contrast.
+    # Each sample gets independent severity so the model sees a continuum of conditions.
+    gaussian=(torch.rand(n,1,1,1,device=d)<.65)
+    sigma=.005+.045*torch.rand(n,1,1,1,device=d)
+    x=(x+torch.randn_like(x)*sigma*gaussian).clamp(0,1)
+    impulse=(torch.rand(n,1,1,1,device=d)<.45)
+    density=.002+.018*torch.rand(n,1,1,1,device=d)
+    mask=torch.rand_like(x)
+    x=torch.where(impulse & (mask<density),torch.zeros_like(x),x)
+    x=torch.where(impulse & (mask>1-density),torch.ones_like(x),x)
+    low_contrast=(torch.rand(n,1,1,1,device=d)<.45)
+    factor=.45+.4*torch.rand(n,1,1,1,device=d)
+    center=x.mean((2,3),keepdim=True)
+    weak=(center+(x-center)*factor).clamp(0,1)
+    x=torch.where(low_contrast,weak,x)
+    return (x*(.85+.3*torch.rand(n,1,1,1,device=d))).clamp(0,1)
+
+def corrupt_batch(x,kind,seed=20261121):
+    """Deterministic held-out image corruptions; random masks are generated on CPU for device parity."""
+    generator=torch.Generator(device='cpu');generator.manual_seed(seed)
+    if kind.startswith('gaussian_'):
+        sigma=float(kind.split('_')[1])/1000
+        noise=torch.randn(x.shape,dtype=x.dtype,generator=generator).to(x.device)
+        return (x+noise*sigma).clamp(0,1)
+    if kind.startswith('salt_pepper_'):
+        density=float(kind.split('_')[2])/1000
+        mask=torch.rand(x.shape,generator=generator).to(x.device)
+        return torch.where(mask<density,torch.zeros_like(x),torch.where(mask>1-density,torch.ones_like(x),x))
+    if kind.startswith('low_contrast_'):
+        factor=float(kind.split('_')[2])/100
+        return (x*factor+(1-factor)*.25).clamp(0,1)
+    raise ValueError(f'Unknown corruption: {kind}')
 
 def arrays(path):
     a=np.load(path,allow_pickle=False)
@@ -225,8 +339,24 @@ def train(args):
     tr=arrays(Path(args.data)/'train.npz');va=arrays(Path(args.data)/'val.npz')
     x=torch.from_numpy(tr['images'][:,None].astype('float32')/255).to(device);y=torch.from_numpy(tr['labels']).to(device)
     vx=torch.from_numpy(va['images'][:,None].astype('float32')/255).to(device);vy=torch.from_numpy(va['labels'])
-    model=KanaCNN().to(device);opt=torch.optim.AdamW(model.parameters(),lr=args.lr,weight_decay=.005)
-    scheduler=torch.optim.lr_scheduler.CosineAnnealingLR(opt,args.epochs,eta_min=args.lr*.02)
+    model=KanaCNN().to(device);teacher=None;initial=None
+    if args.init_model:
+        initial=torch.load(args.init_model,map_location='cpu',weights_only=True)
+        if initial.get('classes')!=CLASSES or initial.get('preprocessing')!=PREPROCESS:raise ValueError('Initial model is incompatible')
+        model.load_state_dict(initial['state_dict'])
+    teacher_path=args.teacher_model or args.init_model
+    if teacher_path:
+        teacher_state=initial if teacher_path==args.init_model else torch.load(teacher_path,map_location='cpu',weights_only=True)
+        if teacher_state.get('classes')!=CLASSES or teacher_state.get('preprocessing')!=PREPROCESS:raise ValueError('Teacher model is incompatible')
+        teacher=KanaCNN().to(device);teacher.load_state_dict(teacher_state['state_dict']);teacher.eval()
+    opt=torch.optim.AdamW(model.parameters(),lr=args.lr,weight_decay=.005)
+    warmup=min(args.warmup_epochs,max(1,args.epochs//5))
+    def lr_scale(step):
+        epoch=step
+        if epoch<warmup:return (epoch+1)/warmup
+        progress=min(1.,(epoch-warmup)/max(1,args.epochs-warmup))
+        return .05+.95*.5*(1+math.cos(math.pi*progress))
+    scheduler=torch.optim.lr_scheduler.LambdaLR(opt,lr_scale)
     history=[];best=-1.;start=0;stale=0
     if args.resume:
         if Path(args.resume).resolve()!= (out/'last.pt').resolve():raise ValueError('Resume must use last.pt in the same output directory')
@@ -236,28 +366,44 @@ def train(args):
         model.load_state_dict(ck['state_dict']);opt.load_state_dict(ck['optimizer']);scheduler.load_state_dict(ck['scheduler'])
         history=ck['history'];best=ck['best'];start=ck['epoch']+1;stale=ck['stale'];torch.set_rng_state(ck['rng'])
         if device.type=='cuda' and ck.get('cuda_rng') is not None:torch.cuda.set_rng_state_all(ck['cuda_rng'])
-    weights=1/torch.bincount(y,minlength=92).float();weights=weights[y]
-    print(f'Device: {device}; train={len(y)}, validation={len(vy)}; classes=92',flush=True)
+        if device.type=='mps' and ck.get('mps_rng') is not None and hasattr(torch.mps,'set_rng_state'):torch.mps.set_rng_state(ck['mps_rng'])
+    counts=torch.bincount(y.detach().cpu(),minlength=92).float().clamp_min(1)
+    weights=(1/counts)[y.detach().cpu()]
+    hw=hardware_status()
+    print(f'Hardware: CUDA={hw["cuda_available"]}, MPS built={hw["mps_built"]}, MPS available={hw["mps_available"]}; selected={device}',flush=True)
+    print(f'Data: train={len(y)}, validation={len(vy)}, classes={len(manifest.get("class_coverage",CLASSES))}; lr={args.lr}; warmup={warmup}',flush=True)
     for epoch in range(start,args.epochs):
-        t=time.time();model.train();total=correct=0;loss_sum=0.
+        t=time.time();model.train();total=correct=0;loss_sum=0.;epoch_lr=opt.param_groups[0]['lr']
         order=torch.multinomial(weights,len(y),replacement=True)
         for ids in order.split(args.batch_size):
-            bx=augment(x[ids]);by=y[ids];opt.zero_grad(set_to_none=True)
+            ids=ids.to(device);bx=augment(x[ids]);by=y[ids];opt.zero_grad(set_to_none=True)
             logits=model(bx);loss=F.cross_entropy(logits,by,label_smoothing=.04)
-            loss.backward();nn.utils.clip_grad_norm_(model.parameters(),5);opt.step()
+            if teacher is not None:
+                with torch.no_grad():teacher_logits=teacher(x[ids])
+                loss=loss+args.distill_weight*F.kl_div(F.log_softmax(logits/2.5,dim=1),F.softmax(teacher_logits/2.5,dim=1),reduction='batchmean')*(2.5**2)
+            loss.backward();nn.utils.clip_grad_norm_(model.parameters(),1.);opt.step()
             total+=len(ids);correct+=int((logits.argmax(1)==by).sum());loss_sum+=float(loss.detach())*len(ids)
-        val_logits=logits_for(model,vx);vm=metrics(val_logits,vy);scheduler.step()
-        row={'epoch':epoch+1,'train_loss':loss_sum/total,'train_accuracy':correct/total,'val_loss':vm['loss'],'val_accuracy':vm['accuracy'],'val_macro_recall':vm['macro_recall'],'seconds':time.time()-t}
-        history.append(row);improved=vm['macro_recall']>best
-        if improved:best=vm['macro_recall'];stale=0
+        val_logits=logits_for(model,vx);vm=metrics(val_logits,vy)
+        val_g=metrics(logits_for(model,corrupt_batch(vx,'gaussian_020')),vy)
+        val_sp=metrics(logits_for(model,corrupt_batch(vx,'salt_pepper_010')),vy)
+        val_lc=metrics(logits_for(model,corrupt_batch(vx,'low_contrast_045')),vy)
+        robust_score=(vm['macro_recall']+val_g['macro_recall']+val_sp['macro_recall']+val_lc['macro_recall'])/4
+        scheduler.step()
+        row={'epoch':epoch+1,'learning_rate':epoch_lr,'train_loss':loss_sum/total,'train_accuracy':correct/total,
+            'val_loss':vm['loss'],'val_accuracy':vm['accuracy'],'val_macro_recall':vm['macro_recall'],
+            'val_gaussian_020_accuracy':val_g['accuracy'],'val_salt_pepper_010_accuracy':val_sp['accuracy'],
+            'val_low_contrast_045_accuracy':val_lc['accuracy'],'val_robust_macro_recall':robust_score,'seconds':time.time()-t}
+        history.append(row);improved=robust_score>best
+        if improved:best=robust_score;stale=0
         else:stale+=1
-        payload={'version':VERSION,'state_dict':model.state_dict(),'classes':CLASSES,'preprocessing':PREPROCESS,'temperature':1.,'epoch':epoch,'best':best,'stale':stale,'history':history,
+        payload={'version':VERSION,'state_dict':model.state_dict(),'classes':CLASSES,'preprocessing':PREPROCESS,'temperature':1.,'epoch':epoch,'best':best,'best_metric':'val_robust_macro_recall','stale':stale,'history':history,
             'optimizer':opt.state_dict(),'scheduler':scheduler.state_dict(),'rng':torch.get_rng_state(),'cuda_rng':torch.cuda.get_rng_state_all() if device.type=='cuda' else None,
+            'mps_rng':torch.mps.get_rng_state() if device.type=='mps' and hasattr(torch.mps,'get_rng_state') else None,
             'fingerprint':fingerprint,'config':vars(args)}
         # argparse callbacks cannot be safely deserialized; store primitives only.
         payload['config']={k:v for k,v in vars(args).items() if k!='func'}
         checkpoint_save(out/'last.pt',payload)
-        if improved:checkpoint_save(out/'best.pt',{k:payload[k] for k in ['version','state_dict','classes','preprocessing','temperature','epoch','fingerprint']})
+        if improved:checkpoint_save(out/'best.pt',{k:payload[k] for k in ['version','state_dict','classes','preprocessing','temperature','epoch','fingerprint','best_metric']})
         save_json(out/'history.json',history);print(json.dumps(row),flush=True)
         if stale>=args.patience:break
     ck=torch.load(out/'best.pt',map_location='cpu',weights_only=True);model.load_state_dict(ck['state_dict'])
@@ -265,7 +411,7 @@ def train(args):
     # Temperature chosen only from validation; does not change top-1 classes.
     candidates=np.linspace(.5,3.,101);temperature=float(min(candidates,key=lambda t:float(F.cross_entropy(vl/t,vy))))
     ck['temperature']=temperature;checkpoint_save(out/'best.pt',ck)
-    save_json(out/'metadata.json',{'classes':CLASSES,'preprocessing':PREPROCESS,'temperature':temperature,'best_epoch':ck['epoch']+1,'torch':str(torch.__version__),'device':str(device),'data_fingerprint':fingerprint,'scope':'92 basic kana only; one isolated character','sources':manifest['sources'],'counts':manifest['counts']})
+    save_json(out/'metadata.json',{'classes':CLASSES,'preprocessing':PREPROCESS,'temperature':temperature,'best_epoch':ck['epoch']+1,'best_metric':ck.get('best_metric','val_macro_recall'),'torch':str(torch.__version__),'device':str(device),'hardware':hardware_status(),'data_fingerprint':fingerprint,'scope':'92 basic kana only; one isolated character','class_coverage':manifest.get('class_coverage',CLASSES),'initialized_from':args.init_model,'teacher_model':args.teacher_model or args.init_model,'distillation_weight':args.distill_weight,'sources':manifest['sources'],'counts':manifest['counts'],'augmentation':['affine','morphology','brightness','Gaussian noise sigma 0.005-0.05','salt-and-pepper density 0.2%-2%','weak contrast factor 0.45-0.85'],'optimizer':{'name':'AdamW','lr':args.lr,'weight_decay':.005,'schedule':'linear warm-up + cosine decay','gradient_clip_norm':1.0}})
     save_json(out/'validation.json',metrics(vl/temperature,vy))
     print(f'Training complete. Best epoch={ck["epoch"]+1}; temperature={temperature}',flush=True)
 
@@ -298,6 +444,20 @@ def evaluate(args):
     np.savez_compressed(Path(args.output).with_suffix('.npz'),probabilities=logits.softmax(1).numpy(),labels=y,ids=a['ids'],sources=a['sources'])
     print(json.dumps({k:v for k,v in result.items() if k not in ['confusion_matrix','per_class','by_source']}))
 
+@torch.inference_mode()
+def evaluate_robust(args):
+    r=KanaRecognizer(args.model,args.device);a=arrays(args.data)
+    x=torch.from_numpy(a['images'][:,None].astype('float32')/255).to(r.device);y=a['labels']
+    conditions=['clean','gaussian_020','gaussian_050','gaussian_100','salt_pepper_010','low_contrast_045']
+    result={'samples':len(y),'conditions':{},'source_note':'The supplied folder dataset contains font-rendered samples only; these results are not handwritten validation.'}
+    csv=['condition,samples,accuracy,macro_recall,macro_f1,top3_accuracy,loss']
+    for condition in conditions:
+        cx=x if condition=='clean' else corrupt_batch(x,condition)
+        m=metrics(logits_for(r.model,cx)/r.temperature,y);result['conditions'][condition]={k:m[k] for k in ('accuracy','macro_recall','macro_f1','top3_accuracy','loss')}
+        csv.append(','.join([condition,str(m['samples'])]+[f'{m[k]:.6f}' for k in ('accuracy','macro_recall','macro_f1','top3_accuracy','loss')]))
+    save_json(args.output,result);Path(args.output).with_name('robust_metrics.csv').write_text('\n'.join(csv)+'\n',encoding='utf-8')
+    print(json.dumps(result['conditions'],ensure_ascii=False))
+
 def export(args):
     r=KanaRecognizer(args.model,'cpu');out=Path(args.output);out.mkdir(parents=True,exist_ok=True)
     example=torch.zeros(1,1,SIZE,SIZE)
@@ -315,8 +475,10 @@ def export(args):
 def main():
     parser=argparse.ArgumentParser(description=__doc__);sub=parser.add_subparsers(dest='command',required=True)
     p=sub.add_parser('prepare');p.add_argument('--hiragana-train',required=True);p.add_argument('--hiragana-test',required=True);p.add_argument('--font-root',required=True);p.add_argument('--external');p.add_argument('--extra-npz',action='append',default=[]);p.add_argument('--supplement-fonts');p.add_argument('--output',required=True);p.add_argument('--seed',type=int,default=20261029);p.set_defaults(func=prepare)
-    p=sub.add_parser('train');p.add_argument('--data',required=True);p.add_argument('--output',required=True);p.add_argument('--epochs',type=int,default=40);p.add_argument('--batch-size',type=int,default=128);p.add_argument('--lr',type=float,default=.001);p.add_argument('--patience',type=int,default=12);p.add_argument('--seed',type=int,default=20261029);p.add_argument('--device',default='auto');p.add_argument('--resume');p.set_defaults(func=train)
+    p=sub.add_parser('prepare-folders');p.add_argument('--input',required=True);p.add_argument('--supplement');p.add_argument('--output',required=True);p.add_argument('--seed',type=int,default=20261029);p.set_defaults(func=prepare_folders)
+    p=sub.add_parser('train');p.add_argument('--data',required=True);p.add_argument('--output',required=True);p.add_argument('--epochs',type=int,default=40);p.add_argument('--batch-size',type=int,default=128);p.add_argument('--lr',type=float,default=.0004);p.add_argument('--warmup-epochs',type=int,default=3);p.add_argument('--distill-weight',type=float,default=.4);p.add_argument('--init-model');p.add_argument('--teacher-model');p.add_argument('--patience',type=int,default=10);p.add_argument('--seed',type=int,default=20261029);p.add_argument('--device',default='auto');p.add_argument('--resume');p.set_defaults(func=train)
     p=sub.add_parser('evaluate');p.add_argument('--model',required=True);p.add_argument('--data',required=True);p.add_argument('--output',required=True);p.add_argument('--device',default='auto');p.set_defaults(func=evaluate)
+    p=sub.add_parser('evaluate-robust');p.add_argument('--model',required=True);p.add_argument('--data',required=True);p.add_argument('--output',required=True);p.add_argument('--device',default='auto');p.set_defaults(func=evaluate_robust)
     p=sub.add_parser('predict');p.add_argument('--model',required=True);p.add_argument('--image',required=True);p.add_argument('--top-k',type=int,default=5);p.add_argument('--threshold',type=float,default=.8);p.add_argument('--device',default='auto');p.set_defaults(func=lambda a:print(json.dumps(KanaRecognizer(a.model,a.device).predict(a.image,a.top_k,a.threshold),ensure_ascii=False,indent=2)))
     p=sub.add_parser('export');p.add_argument('--model',required=True);p.add_argument('--output',required=True);p.set_defaults(func=export)
     args=parser.parse_args()
